@@ -2,7 +2,7 @@
 
 ## Security
 
-If you think you've found a **security issue**, please do not mention it in this repository. Instead, email security@renovateapp.com with as much details as possible so that it can be handled confidentially.
+If you think you've found a **security issue**, please do not mention it in this repository. Instead, email security@renovatebot.com with as much details as possible so that it can be handled confidentially.
 
 ## Support
 
@@ -14,7 +14,7 @@ If you've found a **bug** or have a **feature request** then please create an is
 
 ## Code
 
-If you would like to fix a bug or implement a feature, please fork the repository and create a Pull Request. More information on getting set up locally can be found in [docs/local-development.md](https://github.com/renovateapp/renovate/blob/master/docs/local-development.md).
+If you would like to fix a bug or implement a feature, please fork the repository and create a Pull Request. More information on getting set up locally can be found in [docs/local-development.md](https://github.com/renovatebot/renovate/blob/master/docs/local-development.md).
 
 Before you start any Pull Request, it's recommended that you create an issue to discuss
 first if you have any doubts about requirement or implementation. That way you can be sure that the maintainer(s)
@@ -25,8 +25,6 @@ Pull Requests can only be merged once all status checks are green, which means `
 
 ## Legal
 
-By submitting a Pull Request, you disavow any rights or claims to any changes submitted to the Renovate project and assign the copyright of those changes to Key Location Pte Ltd.
+Pull Request authors must sign the [Renovate CLA](https://cla-assistant.io/renovateapp/renovate).
 
-If you cannot or do not want to reassign those rights (your employment contract for your employer may not allow this), you should not submit a PR. Open an issue and someone else can do the work.
-
-This is a legal way of saying "If you submit a PR to us, that code becomes ours". 99.9% of the time that's what you intend anyways; we hope it doesn't scare you away from contributing.
+If you cannot or do not want to sign this CLA (e.g. your employment contract for your employer may not allow this), you should not submit a PR. Open an issue and someone else can do the work.

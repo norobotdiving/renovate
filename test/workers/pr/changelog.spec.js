@@ -1,113 +1,216 @@
-const changelog = require('changelog');
-const changelogHelper = require('../../../lib/workers/pr/changelog');
-
-jest.mock('changelog');
+jest.mock('../../../lib/platform/github/gh-got-wrapper');
 jest.mock('../../../lib/datasource/npm');
+jest.mock('got');
+
+const ghGot = require('../../../lib/platform/github/gh-got-wrapper');
+
+const { getChangeLogJSON } = require('../../../lib/workers/pr/changelog');
+const {
+  rmAllCache,
+} = require('../../../lib/workers/pr/changelog/source-cache');
+
+const upgrade = {
+  depName: 'renovate',
+  versionScheme: 'semver',
+  fromVersion: '1.0.0',
+  toVersion: '3.0.0',
+  repositoryUrl: 'https://github.com/chalk/chalk',
+  releases: [
+    { version: '0.9.0' },
+    { version: '1.0.0', gitRef: 'npm_1.0.0' },
+    {
+      version: '2.3.0',
+      gitRef: 'npm_2.3.0',
+      releaseTimestamp: '2017-10-24T03:20:46.238Z',
+    },
+    { version: '2.2.2', gitRef: 'npm_2.2.2' },
+    { version: '2.4.2', releaseTimestamp: '2017-12-24T03:20:46.238Z' },
+    { version: '2.5.2' },
+  ],
+};
 
 describe('workers/pr/changelog', () => {
   describe('getChangeLogJSON', () => {
+    beforeEach(async () => {
+      ghGot.mockClear();
+
+      await rmAllCache();
+    });
     it('returns null if no fromVersion', async () => {
       expect(
-        await changelogHelper.getChangeLogJSON('renovate', null, '1.0.0')
+        await getChangeLogJSON({
+          ...upgrade,
+          fromVersion: null,
+        })
+      ).toBe(null);
+      expect(ghGot.mock.calls).toHaveLength(0);
+    });
+    it('returns null if fromVersion equals toVersion', async () => {
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          fromVersion: '1.0.0',
+          toVersion: '1.0.0',
+        })
+      ).toBe(null);
+      expect(ghGot.mock.calls).toHaveLength(0);
+    });
+    it('skips invalid repos', async () => {
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          repositoryUrl: 'https://github.com/about',
+        })
       ).toBe(null);
     });
-    it('returns null if fromVersion equals newVersion', async () => {
+    it('works without Github', async () => {
       expect(
-        await changelogHelper.getChangeLogJSON('renovate', '1.0.0', '1.0.0')
-      ).toBe(null);
+        await getChangeLogJSON({
+          ...upgrade,
+        })
+      ).toMatchSnapshot();
     });
-    it('logs when no JSON', async () => {
-      changelog.generate = jest.fn(() => null);
+    it('uses GitHub tags', async () => {
+      ghGot.mockReturnValueOnce(
+        Promise.resolve({
+          body: [
+            { name: '0.9.0' },
+            { name: '1.0.0' },
+            { name: '1.4.0' },
+            { name: 'v2.3.0' },
+            { name: '2.2.2' },
+            { name: 'v2.4.2' },
+          ],
+        })
+      );
       expect(
-        await changelogHelper.getChangeLogJSON('renovate', '1.0.0', '1.5.0')
-      ).toBe(null);
+        await getChangeLogJSON({
+          ...upgrade,
+        })
+      ).toMatchSnapshot();
     });
-    it('returns JSON', async () => {
-      changelog.generate = jest.fn(() => ({ a: 1 }));
+    it('falls back to commit from release time', async () => {
+      // mock tags response
+      ghGot.mockReturnValueOnce(Promise.resolve());
+      // mock commit time response
+      ghGot.mockReturnValue(
+        Promise.resolve({
+          body: { sha: 'sha_from_time' },
+        })
+      );
       expect(
-        await changelogHelper.getChangeLogJSON('renovate', '1.0.0', '2.0.0')
-      ).toMatchObject({ a: 1 });
+        await getChangeLogJSON({
+          ...upgrade,
+          depName: '@renovate/no',
+        })
+      ).toMatchSnapshot();
     });
     it('returns cached JSON', async () => {
-      changelog.generate = jest.fn(() => ({ a: 2 }));
-      expect(
-        await changelogHelper.getChangeLogJSON('renovate', '1.0.0', '2.0.0')
-      ).toMatchObject({ a: 1 });
+      const first = await getChangeLogJSON({ ...upgrade });
+      const firstCalls = [...ghGot.mock.calls];
+      ghGot.mockClear();
+      const second = await getChangeLogJSON({ ...upgrade });
+      const secondCalls = [...ghGot.mock.calls];
+      expect(first).toEqual(second);
+      expect(firstCalls.length).toBeGreaterThan(secondCalls.length);
     });
     it('filters unnecessary warns', async () => {
-      changelog.generate = jest.fn(() => {
+      ghGot.mockImplementation(() => {
         throw new Error('Unknown Github Repo');
       });
       expect(
-        await changelogHelper.getChangeLogJSON('@renovate/no', '1.0.0', '3.0.0')
+        await getChangeLogJSON({
+          ...upgrade,
+          depName: '@renovate/no',
+        })
+      ).toMatchSnapshot();
+    });
+    it('supports node engines', async () => {
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          depType: 'engines',
+        })
+      ).toMatchSnapshot();
+    });
+    it('handles no repositoryUrl', async () => {
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          repositoryUrl: undefined,
+        })
       ).toBe(null);
     });
-    it('sorts JSON', async () => {
-      changelog.generate = jest.fn(() => ({
-        project: {
-          github: 'chalk/chalk',
-          repository: 'https://github.com/chalk/chalk',
-        },
-        versions: [
-          {
-            version: '2.3.0',
-            date: '2017-10-24T04:12:55.953Z',
-            changes: [
-              {
-                sha: '14e0aa97727019b22f0a003fdc631aeec5e2e24c',
-                date: '2017-10-24T04:12:53.000Z',
-                message: '2.3.0',
-              },
-              {
-                sha: '7be154c074026f77b99e7d854b3a4cdd5e4ae502',
-                date: '2017-10-24T04:02:36.000Z',
-                message: 'TypeScript fixes (#217)',
-              },
-            ],
-          },
-          {
-            version: '2.2.2',
-            date: '2017-10-24T03:20:46.238Z',
-            changes: [
-              {
-                sha: 'e1177ec3628f6d0d37489c1e1accd2c389a376a8',
-                date: '2017-10-24T03:15:51.000Z',
-                message: '2.2.2',
-              },
-              {
-                sha: 'e2a4aa427568ff1c5d649739c4d1f8319cf0d072',
-                date: '2017-10-24T03:12:34.000Z',
-                message:
-                  'fix .visible when called after .enable is set to false',
-              },
-              {
-                sha: 'ede310303b9893146bd7cc24261a50e3b47c633a',
-                date: '2017-10-24T03:12:16.000Z',
-                message: 'add failing test for .visible bug',
-              },
-              {
-                sha: '6adf5794a38552923ea474c4b60c372ef0582035',
-                date: '2017-10-24T02:46:10.000Z',
-                message: '2.2.1',
-              },
-              {
-                sha: 'dc092b4a5f5ca77dd1e22607cdf2fdd388803064',
-                date: '2017-10-24T02:44:46.000Z',
-                message:
-                  'Add .visible for emitting text only when enabled (fixes #192)',
-              },
-              {
-                sha: '4372d27f7eb887c4d33cdca1f9484f321ceab3dd',
-                date: '2017-10-22T08:20:23.000Z',
-                message: 'Add Awesome mentioned badge',
-              },
-            ],
-          },
-        ],
-      }));
+    it('handles invalid repositoryUrl', async () => {
       expect(
-        await changelogHelper.getChangeLogJSON('chalk', '2.2.2', '2.3.0')
+        await getChangeLogJSON({
+          ...upgrade,
+          repositoryUrl: 'http://example.com',
+        })
+      ).toBe(null);
+    });
+    it('handles no releases', async () => {
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          releases: [],
+        })
+      ).toBe(null);
+    });
+    it('handles not enough releases', async () => {
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          releases: [{ version: '0.9.0' }],
+        })
+      ).toBe(null);
+    });
+    it('supports github enterprise and github.com changelog', async () => {
+      const token = process.env.GITHUB_TOKEN;
+      const endpoint = process.env.GITHUB_ENDPOINT;
+      process.env.GITHUB_TOKEN = 'super_secret';
+      process.env.GITHUB_ENDPOINT = 'https://github-enterprise.example.com/';
+      const oldenv = { ...process.env };
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+        })
       ).toMatchSnapshot();
+      // check that process env was restored
+      expect(process.env).toEqual(oldenv);
+      process.env.GITHUB_TOKEN = token;
+      process.env.GITHUB_ENDPOINT = endpoint;
+    });
+    it('supports github enterprise and github enterprise changelog', async () => {
+      const endpoint = process.env.GITHUB_ENDPOINT;
+      process.env.GITHUB_ENDPOINT = 'https://github-enterprise.example.com/';
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          repositoryUrl: 'https://github-enterprise.example.com/chalk/chalk',
+        })
+      ).toMatchSnapshot();
+
+      process.env.GITHUB_ENDPOINT = endpoint;
+    });
+
+    it('supports github enterprise alwo when retrieving data from cache', async () => {
+      const endpoint = process.env.GITHUB_ENDPOINT;
+      process.env.GITHUB_ENDPOINT = 'https://github-enterprise.example.com/';
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          repositoryUrl: 'https://github-enterprise.example.com/chalk/chalk',
+        })
+      ).toMatchSnapshot();
+
+      expect(
+        await getChangeLogJSON({
+          ...upgrade,
+          repositoryUrl: 'https://github-enterprise.example.com/chalk/chalk',
+        })
+      ).toMatchSnapshot();
+      process.env.GITHUB_ENDPOINT = endpoint;
     });
   });
 });

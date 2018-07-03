@@ -6,9 +6,14 @@ describe('lib/manager/travis/extract', () => {
     beforeEach(() => {
       config = {};
     });
-    it('returns empty if fails to pass', () => {
+    it('returns empty if fails to parse', () => {
       const res = extractDependencies('blahhhhh:foo:@what\n', config);
-      expect(res).toEqual([]);
+      expect(res).toBe(null);
+    });
+    it('returns results', () => {
+      const res = extractDependencies('node_js:\n  - 6\n  - 8\n', config);
+      expect(res).toMatchSnapshot();
+      expect(res.deps).toHaveLength(1);
     });
   });
 });

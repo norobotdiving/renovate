@@ -4,11 +4,11 @@
 
 Configuration is supported via any or all of the below:
 
-* Configuration file
-* Environment
-* CLI
-* `renovate.json`, `.renovaterc.json`, or `.renovaterc` in target repository
-* `renovate` field of `package.json` in target repository
+- Configuration file
+- Environment
+- CLI
+- `renovate.json`, `.renovaterc.json`, or `.renovaterc` in target repository
+- `renovate` field of `package.json` in target repository
 
 The above are listed in reverse order of preference. i.e. `package.json`
 settings will override `renovate.json` settings, CLI, which overrides env, which
@@ -36,24 +36,20 @@ module.exports = {
   repositories: [
     {
       repository: 'singapore/repo1',
-      packageFiles: [
-        'package.json',
+      packageRules: [
         {
-          packageFile: 'frontend/package.json',
+          paths: ['frontend/package.json'],
           labels: ['upgrade', 'frontend'],
         },
       ],
     },
     {
       repository: 'singapore/repo2',
-      optionalDependencies: {
-        labels: ['renovate', 'optional'],
-      },
       labels: ['renovate'],
     },
     'singapore/repo3',
   ],
-  packages: [
+  packageRules: [
     {
       packageNames: ['jquery'],
       labels: ['jquery', 'uhoh'],
@@ -73,8 +69,7 @@ To configure any `<list>` items, separate with commas. E.g. `renovate --labels=r
 ### renovate.json
 
 If you add a `renovate.json` file to the root of your repository, you can use
-this to override default settings. If you leave the `packageFiles` field empty
-then `renovate` will still auto-discover all `package.json` files in the
+this to override default settings. `renovate` will still auto-discover all `package.json` files in the
 repository.
 
 ### package.json
@@ -93,6 +88,6 @@ any other settings above.
 
 ## Configuration Options
 
-Please see [https://renovateapp.com/docs/configuration-reference/configuration-options](https://renovateapp.com/docs/configuration-reference/configuration-options) for a list of user-facing configuration options.
+Please see [https://renovatebot.com/docs/configuration-options/](https://renovatebot.com/docs/configuration-options/) for a list of user-facing configuration options.
 
 For further options when running your own instance of Renovate, please see the full config definitions file at `lib/config/definitions.js`.

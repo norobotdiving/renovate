@@ -1,8 +1,13 @@
 # Self-Hosting Renovate
 
-Although Renovate is now best known as a "service" via the GitHub App, that service is actually running this same open source project, so you can get the same functionality if running it yourself. The version you see here in this repository can be cloned or `npm` installed in seconds and give you the exact same functionality as in the app.
+## Open Source vs Commercial versions
 
-## Install
+Although Renovate is now best known as a "service" via the GitHub App, that service is actually running this same open source project, so you can get the same functionality if running it yourself. The version you see here in this repository can be cloned or `npm` installed in seconds and give you the exact core functionality as in the app.
+
+There is also a commercially-licensed "Professional Edition" of Renovate available for GitHub Enterprise, that includes a stateful priority job queue, background scheduler and webhook listener.
+For details and documentation on Renovate Pro, please visit [renovatebot.com/pro](https://renovatebot.com/pro).
+
+## Installing Renovate OSS
 
 #### npmjs
 
@@ -16,12 +21,12 @@ Renovate is available for Docker via an automated build [renovate/renovate](http
 
 ```
 $ docker run renovate/renovate
-$ docker run renovate/renovate:11.32.3
-$ docker run renovate/renovate:11.32
-$ docker run renovate/renovate 11
+$ docker run renovate/renovate:12.1.1
+$ docker run renovate/renovate:12.1
+$ docker run renovate/renovate:12
 ```
 
-If you wish to configure Renovate using a `config.js` file then map it to `/src/config.js` using Docker volumes.
+If you wish to configure Renovate using a `config.js` file then map it to `/usr/src/app/config.js` using Docker volumes.
 
 ## Authentication
 
@@ -58,5 +63,5 @@ configuration option to `false` before running.
 ## Deployment
 
 See
-[deployment docs](https://github.com/renovateapp/renovate/blob/master/docs/deployment.md)
+[deployment docs](https://github.com/renovatebot/renovate/blob/master/docs/deployment.md)
 for details.

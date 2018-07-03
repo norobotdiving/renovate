@@ -16,7 +16,6 @@ describe('workers/repository/error', () => {
       'repository-changed',
       'fork',
       'no-package-files',
-      'loops>10',
       'config-validation',
       'registry-failure',
       'archived',
@@ -25,6 +24,7 @@ describe('workers/repository/error', () => {
       'not-found',
       'forbidden',
       'rate-limit-exceeded',
+      'lockfile-error',
     ];
     errors.forEach(err => {
       it(`errors ${err}`, async () => {

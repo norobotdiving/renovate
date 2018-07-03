@@ -4,18 +4,18 @@ const defaultConfig = require('../../../lib/config/defaults').getConfig();
 const schedule = require('../../../lib/workers/branch/schedule');
 const checkExisting = require('../../../lib/workers/branch/check-existing');
 const parent = require('../../../lib/workers/branch/parent');
-const manager = require('../../../lib/manager');
-const lockFiles = require('../../../lib/workers/branch/lock-files');
+const npmPostExtract = require('../../../lib/manager/npm/post-update');
 const commit = require('../../../lib/workers/branch/commit');
 const statusChecks = require('../../../lib/workers/branch/status-checks');
 const automerge = require('../../../lib/workers/branch/automerge');
 const prWorker = require('../../../lib/workers/pr');
+const getUpdated = require('../../../lib/workers/branch/get-updated');
 
-jest.mock('../../../lib/manager');
+jest.mock('../../../lib/workers/branch/get-updated');
 jest.mock('../../../lib/workers/branch/schedule');
 jest.mock('../../../lib/workers/branch/check-existing');
 jest.mock('../../../lib/workers/branch/parent');
-jest.mock('../../../lib/workers/branch/lock-files');
+jest.mock('../../../lib/manager/npm/post-update');
 jest.mock('../../../lib/workers/branch/status-checks');
 jest.mock('../../../lib/workers/branch/automerge');
 jest.mock('../../../lib/workers/pr');
@@ -56,6 +56,7 @@ describe('workers/branch', () => {
     it('skips branch if not unpublishSafe + pending', async () => {
       schedule.isScheduledNow.mockReturnValueOnce(true);
       config.unpublishSafe = true;
+      config.canBeUnpublished = true;
       config.prCreation = 'not-pending';
       platform.branchExists.mockReturnValueOnce(true);
       const res = await branchWorker.processBranch(config);
@@ -70,7 +71,7 @@ describe('workers/branch', () => {
     it('skips branch if closed major PR found', async () => {
       schedule.isScheduledNow.mockReturnValueOnce(false);
       platform.branchExists.mockReturnValueOnce(true);
-      config.isMajor = true;
+      config.type = 'major';
       checkExisting.prAlreadyExisted.mockReturnValueOnce({
         number: 13,
         state: 'closed',
@@ -81,7 +82,7 @@ describe('workers/branch', () => {
     it('skips branch if closed digest PR found', async () => {
       schedule.isScheduledNow.mockReturnValueOnce(false);
       platform.branchExists.mockReturnValueOnce(true);
-      config.isDigest = true;
+      config.type = 'digest';
       checkExisting.prAlreadyExisted.mockReturnValueOnce({
         number: 13,
         state: 'closed',
@@ -109,64 +110,57 @@ describe('workers/branch', () => {
       await branchWorker.processBranch(config);
       expect(parent.getParentBranch.mock.calls.length).toBe(0);
     });
+    it('throws error if closed PR found', async () => {
+      schedule.isScheduledNow.mockReturnValueOnce(false);
+      platform.branchExists.mockReturnValueOnce(true);
+      platform.getBranchPr.mockReturnValueOnce({
+        state: 'merged',
+        canRebase: false,
+      });
+      await expect(branchWorker.processBranch(config)).rejects.toThrow(
+        /repository-changed/
+      );
+    });
     it('skips branch if edited PR found', async () => {
       schedule.isScheduledNow.mockReturnValueOnce(false);
       platform.branchExists.mockReturnValueOnce(true);
-      platform.findPr.mockReturnValueOnce({});
-      platform.getPr.mockReturnValueOnce({ state: 'open', canRebase: false });
+      platform.getBranchPr.mockReturnValueOnce({
+        state: 'open',
+        canRebase: false,
+      });
       const res = await branchWorker.processBranch(config);
       expect(res).toEqual('pr-edited');
     });
-    it('warns if edited PR is actually closed', async () => {
-      schedule.isScheduledNow.mockReturnValueOnce(false);
-      platform.branchExists.mockReturnValueOnce(true);
-      platform.findPr.mockReturnValueOnce({});
-      platform.getPr.mockReturnValueOnce({ state: 'closed' });
-      const res = await branchWorker.processBranch(config);
-      expect(res).not.toEqual('pr-edited');
-    });
     it('returns if pr creation limit exceeded', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
+      getUpdated.getUpdatedPackageFiles.mockReturnValueOnce({
         updatedPackageFiles: [],
       });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
+      npmPostExtract.getAdditionalFiles.mockReturnValueOnce({
         lockFileError: false,
         updatedLockFiles: [],
       });
-      platform.branchExists.mockReturnValueOnce(false);
+      platform.branchExists.mockReturnValue(false);
       config.prHourlyLimitReached = true;
       expect(await branchWorker.processBranch(config)).toEqual(
         'pr-hourly-limit-reached'
       );
     });
     it('returns if no work', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
+      getUpdated.getUpdatedPackageFiles.mockReturnValueOnce({
         updatedPackageFiles: [],
       });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
+      npmPostExtract.getAdditionalFiles.mockReturnValueOnce({
         lockFileError: false,
         updatedLockFiles: [],
       });
       platform.branchExists.mockReturnValueOnce(false);
       expect(await branchWorker.processBranch(config)).toEqual('no-work');
     });
-    it('returns delete if existing lock file maintenace is pointless', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
-        updatedPackageFiles: [],
-      });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
-        lockFileError: false,
-        updatedLockFiles: [],
-      });
-      config.type = 'lockFileMaintenance';
-      platform.branchExists.mockReturnValueOnce(true);
-      expect(await branchWorker.processBranch(config)).toEqual('delete');
-    });
     it('returns if branch automerged', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
+      getUpdated.getUpdatedPackageFiles.mockReturnValueOnce({
         updatedPackageFiles: [{}],
       });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
+      npmPostExtract.getAdditionalFiles.mockReturnValueOnce({
         lockFileError: false,
         updatedLockFiles: [{}],
       });
@@ -178,10 +172,10 @@ describe('workers/branch', () => {
       expect(prWorker.ensurePr.mock.calls).toHaveLength(0);
     });
     it('ensures PR and tries automerge', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
+      getUpdated.getUpdatedPackageFiles.mockReturnValueOnce({
         updatedPackageFiles: [{}],
       });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
+      npmPostExtract.getAdditionalFiles.mockReturnValueOnce({
         lockFileError: false,
         updatedLockFiles: [{}],
       });
@@ -195,10 +189,10 @@ describe('workers/branch', () => {
       expect(prWorker.checkAutoMerge.mock.calls).toHaveLength(1);
     });
     it('ensures PR and adds lock file error comment', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
+      getUpdated.getUpdatedPackageFiles.mockReturnValueOnce({
         updatedPackageFiles: [{}],
       });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
+      npmPostExtract.getAdditionalFiles.mockReturnValueOnce({
         lockFileError: false,
         updatedLockFiles: [{}],
       });
@@ -214,10 +208,10 @@ describe('workers/branch', () => {
       expect(prWorker.checkAutoMerge.mock.calls).toHaveLength(0);
     });
     it('ensures PR and adds lock file error comment recreate closed', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
+      getUpdated.getUpdatedPackageFiles.mockReturnValueOnce({
         updatedPackageFiles: [{}],
       });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
+      npmPostExtract.getAdditionalFiles.mockReturnValueOnce({
         lockFileError: false,
         updatedLockFiles: [{}],
       });
@@ -234,26 +228,26 @@ describe('workers/branch', () => {
       expect(prWorker.checkAutoMerge.mock.calls).toHaveLength(0);
     });
     it('swallows branch errors', async () => {
-      manager.getUpdatedPackageFiles.mockImplementationOnce(() => {
+      getUpdated.getUpdatedPackageFiles.mockImplementationOnce(() => {
         throw new Error('some error');
       });
       await branchWorker.processBranch(config);
     });
     it('throws and swallows branch errors', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
+      getUpdated.getUpdatedPackageFiles.mockReturnValueOnce({
         updatedPackageFiles: [{}],
       });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
+      npmPostExtract.getAdditionalFiles.mockReturnValueOnce({
         lockFileError: true,
         updatedLockFiles: [{}],
       });
       await branchWorker.processBranch(config);
     });
     it('swallows pr errors', async () => {
-      manager.getUpdatedPackageFiles.mockReturnValueOnce({
+      getUpdated.getUpdatedPackageFiles.mockReturnValueOnce({
         updatedPackageFiles: [{}],
       });
-      lockFiles.getUpdatedLockFiles.mockReturnValueOnce({
+      npmPostExtract.getAdditionalFiles.mockReturnValueOnce({
         lockFileError: false,
         updatedLockFiles: [{}],
       });
